@@ -1298,13 +1298,6 @@ function spinReel(idx, targetIdx, duration){
         if(!stopped){
           stopped=true;
           playSound('reelstop');
-          // 滚轮本体：视觉顿挫 jolt + 屏幕冲击闪光 + 机身微震
-          const reelEl = document.getElementById('reel-el-' + idx);
-          reelEl.classList.remove('jolt'); void reelEl.offsetWidth; reelEl.classList.add('jolt');
-          setTimeout(()=> reelEl.classList.remove('jolt'), 260);
-          flashScreen('impact');
-          machine.classList.remove('impact'); void machine.offsetWidth; machine.classList.add('impact');
-          setTimeout(()=> machine.classList.remove('impact'), 200);
         }
         resolve();
       }
@@ -1529,11 +1522,9 @@ async function startSpin(){
   spinBtn.classList.remove('pulsing');
   spinBtn.disabled = true;
 
-  // SPIN 按钮"砸下去"打击感：按下高亮、机身轻震
+  // SPIN 按钮"砸下去"打击感：按下高亮
   spinBtn.classList.add('hit');
   setTimeout(()=>spinBtn.classList.remove('hit'), 150);
-  machine.classList.remove('punch'); void machine.offsetWidth; machine.classList.add('punch');
-  setTimeout(()=>machine.classList.remove('punch'), 120);
 
   // 扣除下注 + 统计
   balance -= bet;
@@ -1647,28 +1638,6 @@ async function startSpin(){
     payline.classList.add('devour');
     flashScreen('devour');
     playSound('devour', devourCount);
-    // 震动分级：1只轻咬 / 2只中震 / 3只斩杀（超长恐慌颤抖）
-    if(devourCount === 1){
-      buzz([60,30,90]);
-    } else if(devourCount === 2){
-      buzz([100,40,120,40,140]);
-      machine.classList.add('shake');
-      setTimeout(()=>machine.classList.remove('shake'),360);
-    } else {
-      // 斩杀：极强震动 + 长震
-      buzz([200,80,200,80,180,60,160,60,140,60,120,80,200,80,220,60,250]);
-      machine.classList.add('shake');
-      setTimeout(()=>machine.classList.remove('shake'),1200);
-    }
-    // 粒子按数量分级喷射（斩杀时大量奶蛙+骷髅爆炸）
-    const rect = document.getElementById('reel-window').getBoundingClientRect();
-    const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
-    const burstN = isSlay ? 50 : devourCount === 2 ? 24 : 14;
-    spawnParticles(cx, cy, burstN, ['🐸','💀','💨','🩸','⛔','💔','💥','☠️']);
-    if(devourCount >= 2) setTimeout(()=>spawnParticles(cx, cy, Math.floor(burstN*0.6), ['🐸','💀','💨','💢','💥']), 300);
-    // 钱包抖动（红色）
-    balanceEl.classList.remove('roll'); void balanceEl.offsetWidth; balanceEl.classList.add('roll');
-    setTimeout(()=>balanceEl.classList.remove('roll'), isSlay ? 2200 : devourCount === 2 ? 1200 : 900);
     updateBalance('loss');
 
     // 余额 ≤ 0（含负数）：斩杀或吞光 → 弹结局弹窗
@@ -1689,26 +1658,6 @@ async function startSpin(){
     payline.classList.add('win');
     flashScreen('win');
     playSound('win');
-    // 分级震动：tier 越高震动越长越强
-    if(tier >= 5){
-      buzz([80,30,100,30,120,30,140]);
-      machine.classList.add('shake');
-      setTimeout(()=>machine.classList.remove('shake'),420);
-    } else if(tier >= 3){
-      buzz([60,25,80,25,100]);
-      machine.classList.add('shake');
-      setTimeout(()=>machine.classList.remove('shake'),360);
-    } else {
-      buzz([50,20,70]);
-    }
-    const rect = document.getElementById('reel-window').getBoundingClientRect();
-    const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
-    const burstCount = tier >= 5 ? 28 : tier >= 3 ? 20 : tier >= 2 ? 16 : 12;
-    spawnParticles(cx, cy, burstCount, tier >= 4 ? ['💰','⭐','✨','💎','🌟'] : ['⭐','✨','💫','🌟','✴️']);
-    if(tier >= 3) setTimeout(()=>spawnParticles(cx, cy, Math.floor(burstCount*0.6), ['💰','✨','⭐']), 220);
-    // 钱包 roll 弹跳
-    balanceEl.classList.remove('roll'); void balanceEl.offsetWidth; balanceEl.classList.add('roll');
-    setTimeout(()=>balanceEl.classList.remove('roll'), 900);
     updateBalance('gain');
 
     // 延迟弹出中奖弹窗
@@ -1781,14 +1730,11 @@ function pullLever(){
   playSound('lever-pull');
   rod.style.transform = `translateX(-50%) translateY(${MAX_PULL}px)`;
   knob.style.transform = `translateX(-50%) translateY(${MAX_PULL}px)`;
-  spawnParticles(knob.getBoundingClientRect().left+16, knob.getBoundingClientRect().top+16, 6, ['✨','💫','⭐']);
-  machine.classList.add('shake');
   // 180ms 后弹簧回弹，然后开始旋转
   setTimeout(()=>{
     playSound('lever-snap');
     applyLeverSnap(MAX_PULL);
     setTimeout(()=>{
-      machine.classList.remove('shake');
       startSpin();
     }, 220);
   }, 180);
@@ -1799,12 +1745,10 @@ function onDragEnd(){
   if(!dragging) return; dragging=false;
   if(dragOffset > MAX_PULL*0.55){
     // 拉够距离，锁到最大，然后 snap 回弹 + start
-    const r=knob.getBoundingClientRect(); spawnParticles(r.left+16,r.top+16,8,['✨','💫','⭐']);
-    machine.classList.add('shake');
     setTimeout(()=>{
       playSound('lever-snap');
       applyLeverSnap(dragOffset > MAX_PULL ? MAX_PULL : dragOffset);
-      setTimeout(()=>{ machine.classList.remove('shake'); startSpin(); }, 220);
+      setTimeout(()=>{ startSpin(); }, 220);
     }, 120);
   } else {
     // 不够距离：弹回原位
