@@ -896,8 +896,8 @@ const TOTAL_WEIGHT_NO_JP = SYMBOLS.reduce((a,s)=> a + (s.devour ? 0 : s.weight),
      P(round) = DESCENT_BASE + round × DESCENT_SLOPE
    设计目标：约 20 轮破产（降临 + 正常亏损共同作用）
    ============================================================ */
-const DESCENT_BASE = 0.01;   // 第1轮基础概率 1%
-const DESCENT_SLOPE = 0.012; // 每轮 +1.2%（第10轮≈13%，第20轮≈25%）
+const DESCENT_BASE = 0.03;   // 第1轮基础概率 3%
+const DESCENT_SLOPE = 0.025; // 每轮 +2.5%（第10轮≈28%，第15轮≈40%，第20轮≈53%）
 
 /* 不含奶蛙的加权抽取（普通中奖用） */
 function weightedPickNoJp(){
@@ -1306,27 +1306,6 @@ function spinReel(idx, targetIdx, duration){
   });
 }
 
-/* 投币金币飞入：从 SPIN 按钮飞到钱包，体现"扣钱"的真实感 */
-function coinFlyToWallet(count){
-  const btnRect = spinBtn.getBoundingClientRect();
-  const wRect = balanceEl.getBoundingClientRect();
-  count = count || 2;
-  for(let i=0;i<count;i++){
-    const c = document.createElement('div');
-    c.className = 'coin-fly';
-    c.textContent = '$';
-    c.style.left = (btnRect.left + btnRect.width*0.25 + Math.random()*btnRect.width*0.5) + 'px';
-    c.style.top = (btnRect.top + btnRect.height*0.3) + 'px';
-    const tx = (wRect.left + wRect.width/2) - parseFloat(c.style.left);
-    const ty = (wRect.top + wRect.height/2) - parseFloat(c.style.top);
-    c.style.setProperty('--dx', tx+'px');
-    c.style.setProperty('--dy', ty+'px');
-    c.style.animationDelay = (i*60)+'ms';
-    document.body.appendChild(c);
-    setTimeout(()=>c.remove(), 1100 + i*60);
-  }
-}
-
 /* 让中奖线处的 3 个符号单独弹出动画（pop / jackpot-pop） */
 function popWinSymbols(isJackpot){
   for(let i=0;i<3;i++){
@@ -1346,32 +1325,6 @@ function popWinSymbols(isJackpot){
       target.classList.remove(cls); void target.offsetWidth; target.classList.add(cls);
     }
   }
-}
-
-// ===== 粒子 =====
-function spawnParticles(x,y,count,emojis){
-  // 性能：手机端大幅削减粒子数量，避免频繁 DOM 创建拖慢渲染
-  const isMobile = window.innerWidth <= 420;
-  if(isMobile) count = Math.ceil(count * 0.4);
-  emojis = emojis || ['⭐','✨','💫','🌟','✴️'];
-  // 用 DocumentFragment 批量插入，减少重排
-  const frag = document.createDocumentFragment();
-  const elems = [];
-  for(let i=0;i<count;i++){
-    const p=document.createElement('div');
-    p.className='particle';
-    p.textContent = emojis[Math.floor(Math.random()*emojis.length)];
-    p.style.left=x+'px';p.style.top=y+'px';
-    const angle=(Math.PI*2*i/count)+Math.random()*0.5;
-    const dist=60+Math.random()*90;
-    p.style.setProperty('--dx',Math.cos(angle)*dist+'px');
-    p.style.setProperty('--dy',Math.sin(angle)*dist+'px');
-    p.style.setProperty('--rot',(Math.random()*720-360)+'deg');
-    frag.appendChild(p);
-    elems.push(p);
-  }
-  document.body.appendChild(frag);
-  setTimeout(()=>{ elems.forEach(p=>p.remove()); },1000);
 }
 
 // ===== 余额/下注 UI =====
@@ -1534,8 +1487,7 @@ async function startSpin(){
   updateBalance('loss');
   updateSpinCount();
 
-  // 投币金币飞入动画：从SPIN按钮飞进钱包
-  coinFlyToWallet(Math.min(5, Math.max(2, Math.ceil(bet/6))));
+  // 投币音效
   playSound('coin-insert');
 
   setTimeout(()=>{
@@ -1556,23 +1508,44 @@ async function startSpin(){
   statusEl.className = 'status';
 
   // ★ 奶蛙降临：随轮次增长的随机斩杀事件（全奶蛙，余额清零）
-  let r0, r1, r2, forcedSlay = false, isDescent = false;
+  let r0, r1, r2, isDescent = false;
   const descentProb = DESCENT_BASE + gameRound * DESCENT_SLOPE;
   if(Math.random() < descentProb){
     r0 = r1 = r2 = NAIWA_IDX;
-    forcedSlay = true;
     isDescent = true;
     // ★ 装都不装：滚轮条全部填充奶蛙，旋转时整屏都是奶蛙
     [0,1,2].forEach(fillStripAllNaiwa);
+    // ★ 绝望文案：让玩家眼睁睁看着满屏奶蛙转 5 秒以上
+    statusEl.textContent = '🐸 奶蛙大军降临中...';
+    statusEl.className = 'status devour';
   } else {
     [r0, r1, r2] = drawResult();
   }
 
+  // 奶蛙降临：滚轮转 5 秒以上让人绝望；普通：1.5/2/2.7 秒
+  const durations = isDescent ? [5200, 5600, 6200] : [1500, 2050, 2700];
   const promises = [
-    spinReel(0, r0, 1500),
-    spinReel(1, r1, 2050),
-    spinReel(2, r2, 2700),
+    spinReel(0, r0, durations[0]),
+    spinReel(1, r1, durations[1]),
+    spinReel(2, r2, durations[2]),
   ];
+
+  // 奶蛙降临：旋转中不断更新绝望文案
+  let despairTimer = null;
+  if(isDescent){
+    let despairIdx = 0;
+    const despairMsgs = [
+      '🐸 奶蛙大军降临中...',
+      '🐸🐸 满屏奶蛙，无处可逃...',
+      '🐸🐸🐸 它们来了...它们来了！',
+      '🐸🐸🐸🐸 余额即将清零，认命吧...',
+      '🐸🐸🐸🐸🐸 马上就好...马上就结束了...',
+    ];
+    despairTimer = setInterval(()=>{
+      despairIdx = Math.min(despairIdx + 1, despairMsgs.length - 1);
+      statusEl.textContent = despairMsgs[despairIdx];
+    }, 1100);
+  }
 
   // 差点中奖 tease：前两个相同时，第三个减速时弹挑逗文案+音效
   if(r0 === r1 && r0 !== NAIWA_IDX){
@@ -1585,6 +1558,7 @@ async function startSpin(){
   }
 
   await Promise.all(promises);
+  if(despairTimer) clearInterval(despairTimer);
   payline.classList.remove('tease');
 
   // 判定
@@ -1596,14 +1570,13 @@ async function startSpin(){
   let tier = 0;
 
   // 统计三个位置中奶蛙数量：1只扣10 / 2只扣50 / 3只扣200；奶蛙降临=斩杀（清零）
+  // ★ 三奶蛙不再斩杀，只扣 $200；只有"奶蛙降临"（全奶蛙）才清零斩杀
   const naiwaCount = [r0, r1, r2].filter(i => SYMBOLS[i].devour).length;
-  let isSlay = false;  // 奶蛙降临斩杀标记
   if(naiwaCount > 0){
     isDevour = true;
     devourCount = naiwaCount;
     if(isDescent){
       // ★ 奶蛙降临：余额直接清零，斩杀
-      isSlay = true;
       devourLoss = balance;
       balance = 0;
     } else {
@@ -1627,7 +1600,7 @@ async function startSpin(){
     naiwaPositions.forEach(i=>{
       document.getElementById('reel-el-'+i).classList.add('devour-highlight');
     });
-    // 文案 + 震动 + 粒子按奶蛙数量分级（降临=斩杀）
+    // 文案：降临=斩杀；普通奶蛙只扣钱
     const devourMsgs = {
       1: `🐸 奶蛙咬了一口 -$${devourLoss}`,
       2: `🐸🐸 奶蛙咬掉一块肉 -$${devourLoss}！`,
@@ -1640,9 +1613,13 @@ async function startSpin(){
     playSound('devour', devourCount);
     updateBalance('loss');
 
-    // 余额 ≤ 0（含负数）：斩杀或吞光 → 弹结局弹窗
+    // 余额 ≤ 0：奶蛙降临→专属斩杀弹窗；普通奶蛙扣钱致破产→普通输光弹窗
     if(balance <= 0){
-      setTimeout(()=> showDevouredModal(forcedSlay ? 'force' : 'slay'), 1100);
+      if(isDescent){
+        setTimeout(()=> showDevouredModal('force'), 1100);
+      } else {
+        setTimeout(()=> checkBroke(), 1100);
+      }
     }
   } else if(winAmountVal > 0){
     // 中奖符号逐个弹出
